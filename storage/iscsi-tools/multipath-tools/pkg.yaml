@@ -1,0 +1,58 @@
+name: multipath-tools
+variant: scratch
+shell: /bin/bash
+dependencies:
+  - stage: base
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/lvm2:{{ .BUILD_ARG_PKGS }}"
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/libaio:{{ .BUILD_ARG_PKGS }}"
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/libjson-c:{{ .BUILD_ARG_PKGS }}"
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/liburcu:{{ .BUILD_ARG_PKGS }}"
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/systemd-udevd:{{ .BUILD_ARG_PKGS }}"
+steps:
+  - sources:
+      - url: https://github.com/opensvc/multipath-tools/archive/refs/tags/{{ .MULTIPATH_TOOLS_VERSION }}.tar.gz
+        destination: multipath-tools.tar.gz
+        sha256: {{ .MULTIPATH_TOOLS_SHA256 }}
+        sha512: {{ .MULTIPATH_TOOLS_SHA512 }}
+    env:
+      SOURCE_DATE_EPOCH: {{ .BUILD_ARG_SOURCE_DATE_EPOCH }}
+    prepare:
+      - |
+        tar -xzf multipath-tools.tar.gz --strip-components=1
+    build:
+      - |
+        export PKG_CONFIG_PATH=/usr/lib/pkgconfig
+
+        make -j $(nproc) \
+          prefix=/usr/local \
+          LIB=lib \
+          SYSTEMD="" \
+          READLINE=
+    install:
+      - |
+        make DESTDIR=/rootfs \
+          prefix=/usr/local \
+          LIB=lib \
+          SYSTEMD="" \
+          READLINE= \
+          libudevdir=/usr/lib/udev \
+          install
+
+        # Move kpartx_id helper to rules.d (allowed path for udev helpers)
+        mv /rootfs/usr/lib/udev/kpartx_id /rootfs/usr/lib/udev/rules.d/kpartx_id
+
+        # cleanup
+        rm -rf /rootfs/usr/local/{include,share}
+        rm -rf /rootfs/etc/multipath
+        rm -rf /rootfs/usr/lib/tmpfiles.d
+    sbom:
+      outputPath: /rootfs/usr/local/share/spdx/multipath-tools.spdx.json
+      version: {{ .MULTIPATH_TOOLS_VERSION }}
+      cpes:
+        - cpe:2.3:a:multipath-tools_project:multipath-tools:{{ .MULTIPATH_TOOLS_VERSION }}:*:*:*:*:*:*:*
+      licenses:
+        - GPL-2.0
+        - LGPL-2.0
+finalize:
+  - from: /rootfs
+    to: /rootfs
